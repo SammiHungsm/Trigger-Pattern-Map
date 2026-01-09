@@ -3,39 +3,39 @@ import json
 import pandas as pd
 from datasets import Dataset
 from sklearn.model_selection import train_test_split
+from config import label2id
 
 def load_synthetic_data(json_path, tokenizer, max_length=128):
-    """
-    讀取合成數據並轉換為 Hugging Face Dataset 格式
-    """
-    # 1. 讀取 JSON
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     df = pd.DataFrame(data)
     
-    # 2. 類別轉 ID (必須與 model.py 中的 label2id 一致)
-    label2id = {
-        "Multi-source": 0, 
-        "Procedure": 1, 
-        "Definition": 2, 
-        "Explainer": 3, 
-        "Aggregated Facts": 4
-    }
-    df['label'] = df['label'].map(label2id)
+    # 清洗：確保標籤完全匹配
+    df['label'] = df['label'].astype(str).str.strip()
+    df['mapped_label'] = df['label'].map(label2id)
     
-    # 3. 拆分訓練集與驗證集 (8:2)
+    if df['mapped_label'].isnull().any():
+        invalid = df[df['mapped_label'].isnull()]['label'].unique()
+        print(f"⚠️ 跳過無法辨識的標籤: {invalid}")
+        df = df.dropna(subset=['mapped_label'])
+    
+    df['label'] = df['mapped_label'].astype(int)
+    df = df.drop(columns=['mapped_label'])
+    
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
     
-    # 4. 轉換為 Dataset
-    train_ds = Dataset.from_pandas(train_df)
-    val_ds = Dataset.from_pandas(val_df)
+    train_ds = Dataset.from_pandas(train_df.reset_index(drop=True))
+    val_ds = Dataset.from_pandas(val_df.reset_index(drop=True))
     
-    # 5. Tokenization 處理 (減少 loop 代碼)
     def tokenize_fn(batch):
         return tokenizer(batch["text"], padding="max_length", truncation=True, max_length=max_length)
+
+    # 移除 text 避免 Tensor 報錯
+    train_ds = train_ds.map(tokenize_fn, batched=True, remove_columns=["text"])
+    val_ds = val_ds.map(tokenize_fn, batched=True, remove_columns=["text"])
     
-    train_ds = train_ds.map(tokenize_fn, batched=True)
-    val_ds = val_ds.map(tokenize_fn, batched=True)
+    train_ds.set_format("torch")
+    val_ds.set_format("torch")
     
     return train_ds, val_ds

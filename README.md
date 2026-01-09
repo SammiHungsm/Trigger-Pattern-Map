@@ -1,0 +1,1 @@
+# Trigger-Pattern-Map

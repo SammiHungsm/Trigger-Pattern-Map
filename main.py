@@ -18,8 +18,9 @@ def main():
     # 3. 準備數據 (引用 src/data_loader.py)
     # 記得先放好 data/synthetic_data.json
     train_ds, val_ds = load_synthetic_data("data/synthetic_data.json", tokenizer)
+    train_ds = train_ds.remove_columns(["text", "tokens"]) 
+    val_ds = val_ds.remove_columns(["text", "tokens"])
 
-    # 4. 行訓練 (引用 src/trainer.py)
     run_training(model, tokenizer, train_ds, val_ds)
 
 if __name__ == "__main__":
